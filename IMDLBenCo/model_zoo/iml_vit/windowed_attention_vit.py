@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 import warnings
-from timm.models.layers import DropPath, Mlp, trunc_normal_
+from timm.layers import DropPath, Mlp, trunc_normal_
 from fvcore.nn.distributed import differentiable_all_reduce
 import fvcore.nn.weight_init as weight_init
 import torch.distributed as dist
