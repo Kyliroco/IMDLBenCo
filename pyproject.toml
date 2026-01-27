@@ -3,7 +3,7 @@ requires = ["setuptools>=64.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "imdlbenco"
+name = "imdlbenco13"
 authors = [
     {name = "Xiaochen Ma", email = "xiaochen.ma.cs@gmail.com"},
 ]
