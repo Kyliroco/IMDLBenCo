@@ -24,8 +24,12 @@ class Trufor(nn.Module):
         self.phase = phase
         # training phase
         if phase == 2:
-            self.model.dncnn.load_state_dict(
-                torch.load(np_pretrain_weights))
+            try:
+                self.model.dncnn.load_state_dict(
+                    torch.load(np_pretrain_weights))
+            except RuntimeError:
+                self.model.dncnn.load_state_dict(
+                    torch.load(np_pretrain_weights)["network"])
             print("load noiseprint++ weight success.")
             state_dict = torch.load(mit_b2_pretrain_weights)
             self.model.backbone.load_state_dict(state_dict, strict=False)

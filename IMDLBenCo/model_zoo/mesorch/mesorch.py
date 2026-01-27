@@ -8,7 +8,7 @@ import sys
 import os
 sys.path.append('.')
 
-from timm.models.layers import DropPath, to_2tuple, trunc_normal_
+from timm.layers import DropPath, to_2tuple, trunc_normal_
 from .extractor.high_frequency_feature_extraction import HighDctFrequencyExtractor
 from .extractor.low_frequency_feature_extraction import LowDctFrequencyExtractor
 import math

@@ -9,10 +9,10 @@ import torch.nn as nn
 import torch
 import torch.nn.functional as F
 from functools import partial
-from timm.models.layers import trunc_normal_
+from timm.layers import trunc_normal_
 
 
-from timm.models.layers import trunc_normal_, DropPath, to_2tuple
+from timm.layers import trunc_normal_, DropPath, to_2tuple
 
 from IMDLBenCo.registry import MODELS
 
