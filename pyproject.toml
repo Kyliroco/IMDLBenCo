@@ -9,7 +9,7 @@ authors = [
 ]
 description = "A comprehensive benchmark and code base for Image manipulation and localization."
 readme = {file = "README.md", content-type = "text/markdown"}
-requires-python = ">=3.7, <4"
+requires-python = ">=3.9"
 license = {text = "CC-BY-4.0"}
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -19,10 +19,11 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "License :: Free For Educational Use",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.7",
-    "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3 :: Only",
 ]
 keywords = [
