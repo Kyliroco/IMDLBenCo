@@ -492,7 +492,7 @@ class ScoreNetwork(nn.Module):
 
 @MODELS.register_module()
 class Mesorch(nn.Module):
-    def __init__(self, seg_pretrain_path=None, conv_pretrain=False, if_predict_label=False):
+    def __init__(self, seg_pretrain_path=None, conv_pretrain=False, if_predict_label=False,pos_weight=None):
         super(Mesorch, self).__init__()
         self.convnext = ConvNeXt(conv_pretrain)
         self.segformer = MixVisionTransformer(seg_pretrain_path)
@@ -504,7 +504,11 @@ class Mesorch(nn.Module):
         self.gate = ScoreNetwork()
         # 最后调整到512x512大小
         self.resize = nn.Upsample(size=(512, 512), mode='bilinear', align_corners=True)
-        self.loss_fn = nn.BCEWithLogitsLoss()
+        if pos_weight:
+            pos_weight = torch.tensor([float(pos_weight)])
+            self.loss_fn = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+        else:
+            self.loss_fn = nn.BCEWithLogitsLoss()
         # self.if_predict_label = if_predict_label
         # if if_predict_label:
         #     self.pooled = nn.AdaptiveAvgPool2d(1)
