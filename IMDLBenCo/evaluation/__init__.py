@@ -4,12 +4,13 @@ from .F1 import ImageF1, PixelF1
 from .AUC import ImageAUC, PixelAUC
 from .IOU import PixelIOU
 from .Accuracy import ImageAccuracy, PixelAccuracy
+from .FPR import PixelFPR
 from .gradcam.grad_camera_visualize import grad_camera_visualize
 
 __all__ = [
     # Below for develop
-    'cal_confusion_matrix', 
-    'generate_region_mask', 
+    'cal_confusion_matrix',
+    'generate_region_mask',
     'cal_F1',
     # Below for real-world senario
     'AbstractEvaluator',
@@ -18,7 +19,8 @@ __all__ = [
     'ImageAUC',
     'PixelAUC',
     'PixelIOU',
-    'ImageAccuracy', 
-    'PixelAccuracy', 
+    'ImageAccuracy',
+    'PixelAccuracy',
+    'PixelFPR',
     'grad_camera_visualize'
     ]
