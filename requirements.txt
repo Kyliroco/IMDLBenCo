@@ -6,7 +6,7 @@ numpy>=2.0
 scikit-learn
 timm>=1.0.0
 tensorboard
-setuptools
+setuptools<80
 grad-cam>=1.5.0
 ttach
 appdirs
