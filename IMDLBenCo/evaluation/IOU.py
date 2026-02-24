@@ -1,10 +1,6 @@
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import numpy as np
 from .abstract_class import AbstractEvaluator
 import torch.distributed as dist
-import os
 from sklearn.metrics import jaccard_score
 
 class PixelIOU(AbstractEvaluator):
@@ -13,6 +9,9 @@ class PixelIOU(AbstractEvaluator):
         self.desc = "pixel-level IOU"
         self.threshold = threshold
         self.mode = mode
+        # Accumulators: only count samples whose mask is NOT all-zero (tampered images)
+        self._sum = 0.0
+        self._count = 0
     
     def Cal_IOU(self, predict, mask, shape_mask=None):
         if shape_mask is not None:
@@ -63,30 +62,40 @@ class PixelIOU(AbstractEvaluator):
         self._check_pixel_level_params(predict, mask)
         if self.mode == "origin":
             IOU = self.Cal_IOU(predict, mask, shape_mask)
-            # IOU2 = self.Cal_IOU_2(predict, mask, shape_mask)
         elif self.mode == "reverse":
             IOU = self.Cal_IOU(1 - predict, mask, shape_mask)
-            # IOU2 = self.Cal_IOU_2(1 - predict, mask, shape_mask)
         elif self.mode == "double":
             normal_iou = self.Cal_IOU(predict, mask, shape_mask)
             reverse_iou = self.Cal_IOU(1 - predict, mask, shape_mask)
             IOU = torch.max(normal_iou, reverse_iou)
-            # normal_iou2 = self.Cal_IOU_2(predict, mask, shape_mask)
-            # reverse_iou2 = self.Cal_IOU_2(1 - predict, mask, shape_mask)
-            # IOU2 = torch.max(normal_iou2, reverse_iou2)
         else:
             raise RuntimeError(f"Cal_AUC no mode name {self.mode}")
-        return IOU
-    
+
+        # Only accumulate for tampered images (non-zero mask)
+        is_tampered = mask.sum(dim=(1, 2, 3)) > 0  # [B]
+        valid_IOU = IOU[is_tampered]
+        self._sum += valid_IOU.sum().item()
+        self._count += valid_IOU.numel()
+        return None
+
     def remain_update(self, predict, mask, shape_mask=None, *args, **kwargs):
         return self.batch_update(predict, mask, shape_mask, *args, **kwargs)
 
     def epoch_update(self):
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        t = torch.tensor([self._sum, self._count], dtype=torch.float64, device=device)
+        if dist.is_available() and dist.is_initialized():
+            dist.barrier()
+            dist.all_reduce(t, op=dist.ReduceOp.SUM)
+        total_sum = t[0].item()
+        total_count = t[1].item()
+        if total_count == 0:
+            return 0.0
+        return total_sum / total_count
 
-        return None
-    
     def recovery(self):
-        return None
+        self._sum = 0.0
+        self._count = 0
 
 
 

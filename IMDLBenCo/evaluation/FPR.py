@@ -1,4 +1,5 @@
 import torch
+import torch.distributed as dist
 from .abstract_class import AbstractEvaluator
 
 
@@ -42,6 +43,9 @@ class PixelFPR(AbstractEvaluator):
             raise ValueError(f"PixelFPR: unknown mode '{mode}'. "
                              "Choose from 'origin', 'reverse', 'double'.")
         self.mode = mode
+        # Accumulators: only count samples whose mask IS all-zero (authentic images)
+        self._sum = 0.0
+        self._count = 0
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -77,11 +81,11 @@ class PixelFPR(AbstractEvaluator):
     # ------------------------------------------------------------------
 
     def batch_update(self, predict: torch.Tensor, mask: torch.Tensor,
-                     shape_mask=None, *args, **kwargs) -> torch.Tensor:
-        """Return per-image FPR_pix for the current batch.
+                     shape_mask=None, *args, **kwargs):
+        """Accumulate FPR_pix only for authentic images (all-zero mask).
 
-        The returned tensor has shape ``[B]`` and is consumed by the tester's
-        ``MetricLogger`` which accumulates a running mean.
+        Returns None so the tester skips per-batch logging; the final mean
+        is returned by ``epoch_update``.
         """
         self._check_pixel_level_params(predict, mask)
 
@@ -96,16 +100,29 @@ class PixelFPR(AbstractEvaluator):
             fpr_rev = self._cal_fpr(1.0 - predict_bin, mask, shape_mask)
             fpr = torch.min(fpr_orig, fpr_rev)
 
-        return fpr
+        # Only accumulate for authentic images (mask is entirely zero)
+        is_authentic = mask.sum(dim=(1, 2, 3)) == 0  # [B]
+        valid_fpr = fpr[is_authentic]
+        self._sum += valid_fpr.sum().item()
+        self._count += valid_fpr.numel()
+        return None
 
     def remain_update(self, predict: torch.Tensor, mask: torch.Tensor,
-                      shape_mask=None, *args, **kwargs) -> torch.Tensor:
+                      shape_mask=None, *args, **kwargs):
         return self.batch_update(predict, mask, shape_mask, *args, **kwargs)
 
     def epoch_update(self):
-        # The tester accumulates per-image values via MetricLogger; no
-        # additional aggregation is needed here.
-        return None
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        t = torch.tensor([self._sum, self._count], dtype=torch.float64, device=device)
+        if dist.is_available() and dist.is_initialized():
+            dist.barrier()
+            dist.all_reduce(t, op=dist.ReduceOp.SUM)
+        total_sum = t[0].item()
+        total_count = t[1].item()
+        if total_count == 0:
+            return 0.0
+        return total_sum / total_count
 
     def recovery(self):
-        return None
+        self._sum = 0.0
+        self._count = 0
