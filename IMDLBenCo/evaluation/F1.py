@@ -121,6 +121,9 @@ class PixelF1(AbstractEvaluator):
         self.image_num = 0
         #  mode : "origin, reverse, double"
         self.mode = mode
+        # Accumulators: only count samples whose mask is NOT all-zero (tampered images)
+        self._sum = 0.0
+        self._count = 0
 
     def Cal_Confusion_Matrix(self, predict, mask, shape_mask):
         """compute local confusion matrix for a batch of predict and target masks
@@ -202,17 +205,33 @@ class PixelF1(AbstractEvaluator):
             F1 = torch.max(self.Cal_F1(TP, TN, FP, FN), self.Cal_F1(FN, FP, TN, TP))
         else:
             raise RuntimeError(f"Cal_F1 no mode name {self.mode}")
-        
-        return F1
-    
+
+        # Only accumulate for tampered images (non-zero mask)
+        is_tampered = mask.sum(dim=(1, 2, 3)) > 0  # [B]
+        valid_F1 = F1[is_tampered]
+        self._sum += valid_F1.sum().item()
+        self._count += valid_F1.numel()
+        return None
+
     def remain_update(self, predict, mask, shape_mask=None, *args, **kwargs):
         return self.batch_update(predict, mask, shape_mask, *args, **kwargs)
-    
-    def epoch_update(self):
 
-        return None
+    def epoch_update(self):
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        t = torch.tensor([self._sum, self._count], dtype=torch.float64, device=device)
+        if dist.is_available() and dist.is_initialized():
+            dist.barrier()
+            dist.all_reduce(t, op=dist.ReduceOp.SUM)
+        total_sum = t[0].item()
+        total_count = t[1].item()
+        if total_count == 0:
+            return 0.0
+        return total_sum / total_count
+
     def recovery(self):
         self.image_num = 0
+        self._sum = 0.0
+        self._count = 0
 
 
 def test_origin_image_f1():
