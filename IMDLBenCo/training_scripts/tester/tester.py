@@ -193,7 +193,11 @@ def test_one_epoch(model: torch.nn.Module,
                     _n=1
                 )
         if data_dict is None:
-            data_dict = rem_data_dict
+            try:
+              data_dict = rem_data_dict
+            except UnboundLocalError:
+              raise ValueError("Your dataset is empty or smaller than a batch")
+              
             output_dict = rem_output_dict
         metric_logger.synchronize_between_processes()    
         print("---syncronized---")
