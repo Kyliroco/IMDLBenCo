@@ -149,6 +149,9 @@ class PixelAUC(AbstractEvaluator):
         self.desc = "pixel-level AUC"
         self.threshold = threshold
         self.mode = mode
+        # Accumulators: only count samples whose mask is NOT all-zero (tampered images)
+        self._sum = 0.0
+        self._count = 0
 
     def Cal_AUC(self, y_true, y_scores, shape_mask=None):
         if shape_mask is not None:
@@ -205,18 +208,34 @@ class PixelAUC(AbstractEvaluator):
                 AUC_list.append(max(self.Cal_AUC(mask[idx], predict[idx], single_shape_mask), self.Cal_AUC(mask[idx], 1 - predict[idx], single_shape_mask)))
         else:
             raise RuntimeError(f"Cal_AUC no mode name {self.mode}")
-        
-        return torch.tensor(AUC_list)
-    
+
+        AUC = torch.tensor(AUC_list)
+
+        # Only accumulate for tampered images (non-zero mask)
+        is_tampered = mask.sum(dim=(1, 2, 3)) > 0  # [B]
+        valid_AUC = AUC[is_tampered]
+        self._sum += valid_AUC.sum().item()
+        self._count += valid_AUC.numel()
+        return None
+
     def remain_update(self, predict, mask, shape_mask=None, *args, **kwargs):
         return self.batch_update(predict, mask, shape_mask, *args, **kwargs)
 
     def epoch_update(self):
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        t = torch.tensor([self._sum, self._count], dtype=torch.float64, device=device)
+        if dist.is_available() and dist.is_initialized():
+            dist.barrier()
+            dist.all_reduce(t, op=dist.ReduceOp.SUM)
+        total_sum = t[0].item()
+        total_count = t[1].item()
+        if total_count == 0:
+            return 0.0
+        return total_sum / total_count
 
-        return None
-    
     def recovery(self):
-        return None
+        self._sum = 0.0
+        self._count = 0
 
 
 def test_origin_image_AUC():
