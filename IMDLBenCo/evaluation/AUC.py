@@ -212,7 +212,7 @@ class PixelAUC(AbstractEvaluator):
         AUC = torch.tensor(AUC_list)
 
         # Only accumulate for tampered images (non-zero mask)
-        is_tampered = mask.sum(dim=(1, 2, 3)) > 0  # [B]
+        is_tampered = (mask.sum(dim=(1, 2, 3)) > 0).cpu()  # [B]
         valid_AUC = AUC[is_tampered]
         self._sum += valid_AUC.sum().item()
         self._count += valid_AUC.numel()
