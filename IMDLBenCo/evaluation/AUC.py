@@ -25,6 +25,24 @@ class ImageAUCNoRemain(AbstractEvaluator):
         n_pos = torch.sum(y_true_sorted).item()
         n_neg = len(y_true_sorted) - n_pos
 
+        # --- NaN diagnostic logs ---
+        if n_pos == 0:
+            print(
+                f"[ImageAUCNoRemain WARNING] n_pos=0: all samples are NEGATIVE (authentic). "
+                f"AUC is undefined — returning nan.\n"
+                f"  total_samples={len(y_true_sorted)}, n_neg={n_neg}\n"
+                f"  y_scores range: [{y_scores.min().item():.6f}, {y_scores.max().item():.6f}]"
+            )
+            return float('nan')
+        if n_neg == 0:
+            print(
+                f"[ImageAUCNoRemain WARNING] n_neg=0: all samples are POSITIVE (tampered). "
+                f"AUC is undefined — returning nan.\n"
+                f"  total_samples={len(y_true_sorted)}, n_pos={n_pos}\n"
+                f"  y_scores range: [{y_scores.min().item():.6f}, {y_scores.max().item():.6f}]"
+            )
+            return float('nan')
+
         # 累积正样本和负样本的数量
         tps = torch.cumsum(y_true_sorted, dim=0)
         fps = torch.cumsum(1 - y_true_sorted, dim=0)
@@ -35,8 +53,17 @@ class ImageAUCNoRemain(AbstractEvaluator):
 
         # 计算 AUC
         auc = torch.trapz(tpr, fpr)
+        auc_val = auc.item()
 
-        return auc.item()
+        if torch.isnan(auc) or torch.isinf(auc):
+            print(
+                f"[ImageAUCNoRemain WARNING] AUC computed as {auc_val} after trapz!\n"
+                f"  n_pos={n_pos}, n_neg={n_neg}, total={len(y_true_sorted)}\n"
+                f"  y_true unique: {y_true_sorted.unique().tolist()}\n"
+                f"  y_scores range: [{y_scores.min().item():.6f}, {y_scores.max().item():.6f}]"
+            )
+
+        return auc_val
     
     
     def batch_update(self, predict_label, label, *args, **kwargs):
@@ -130,9 +157,36 @@ class ImageAUC(AbstractEvaluator):
                 raise RuntimeError(f"No data to calculate {self.name}, please check the input data.")
             gather_predict = torch.cat(self.remain_predict, dim=0)
             gather_label = torch.cat(self.remain_label, dim=0)
+
+        # --- NaN diagnostic logs ---
+        labels_np = gather_label.cpu().numpy()
+        predict_np = gather_predict.cpu().numpy()
+        unique_labels = np.unique(labels_np)
+        print(
+            f"[ImageAUC] epoch_update: total_samples={len(labels_np)}, "
+            f"unique_labels={unique_labels.tolist()}, "
+            f"predict range=[{predict_np.min():.6f}, {predict_np.max():.6f}]"
+        )
+        if len(unique_labels) < 2:
+            print(
+                f"[ImageAUC WARNING] Only one class present in labels: {unique_labels.tolist()}. "
+                f"AUC is undefined — returning nan.\n"
+                f"  total_samples={len(labels_np)}"
+            )
+            return float('nan')
+
         # calculate AUC
-        auc = roc_auc_score(gather_label.cpu().numpy(), gather_predict.cpu().numpy())
+        try:
+            auc = roc_auc_score(labels_np, predict_np)
+        except ValueError as e:
+            print(
+                f"[ImageAUC WARNING] roc_auc_score raised ValueError: {e}\n"
+                f"  total_samples={len(labels_np)}, unique_labels={unique_labels.tolist()}\n"
+                f"  predict range: [{predict_np.min():.6f}, {predict_np.max():.6f}]"
+            )
+            return float('nan')
         return auc
+
     def recovery(self):
         self.predict = []
         self.label = []
@@ -153,13 +207,16 @@ class PixelAUC(AbstractEvaluator):
         self._sum = 0.0
         self._count = 0
 
-    def Cal_AUC(self, y_true, y_scores, shape_mask=None):
+    def Cal_AUC(self, y_true, y_scores, shape_mask=None, image_name=None):
+        name_str = image_name if image_name is not None else "<unknown>"
+
         if shape_mask is not None:
             y_true = y_true * shape_mask
             y_scores = y_scores * shape_mask
         
         y_true = y_true.flatten()
         y_scores = y_scores.flatten()
+
         # 处理 y_true 全为 0 的情况, 理论上这种情况不该计算auc
         if torch.sum(y_true) == 0:
             # raise "The mask is all 0, we can't calculate pixel-AUC under this situation, please utilize a test only containse manipulated images to calculate AUC."
@@ -179,6 +236,17 @@ class PixelAUC(AbstractEvaluator):
         n_pos = torch.sum(y_true_sorted).item()
         n_neg = len(y_true_sorted) - n_pos
 
+        # --- NaN diagnostic logs ---
+        if n_neg == 0:
+            print(
+                f"[PixelAUC WARNING] n_neg=0 for image '{name_str}': "
+                f"all pixels are POSITIVE (tampered). "
+                f"AUC is undefined — returning nan.\n"
+                f"  n_pos={n_pos}, total={len(y_true_sorted)}\n"
+                f"  y_scores range: [{y_scores.min().item():.6f}, {y_scores.max().item():.6f}]"
+            )
+            return float('nan')
+
         # 累积正样本和负样本的数量
         tps = torch.cumsum(y_true_sorted, dim=0)
         fps = torch.cumsum(1 - y_true_sorted, dim=0)
@@ -188,24 +256,38 @@ class PixelAUC(AbstractEvaluator):
 
         # 计算 AUC
         auc = torch.trapz(tpr, fpr)
+        auc_val = auc.item()
 
-        return auc.item()
+        if torch.isnan(auc) or torch.isinf(auc):
+            print(
+                f"[PixelAUC WARNING] AUC={auc_val} after trapz for image '{name_str}'\n"
+                f"  n_pos={n_pos}, n_neg={n_neg}, total={len(y_true_sorted)}\n"
+                f"  y_true unique values: {y_true_sorted.unique().tolist()}\n"
+                f"  y_scores range: [{y_scores.min().item():.6f}, {y_scores.max().item():.6f}]"
+            )
+
+        return auc_val
         
     def batch_update(self, predict, mask, shape_mask=None, *args, **kwargs):
         self._check_pixel_level_params(predict, mask)
+        names = kwargs.get('name', None)
         AUC_list = []
         if self.mode == "origin":
             for idx in range(predict.shape[0]):
-                single_shape_mask = None if shape_mask == None else shape_mask[idx]
-                AUC_list.append(self.Cal_AUC(mask[idx], predict[idx], single_shape_mask))
+                single_shape_mask = None if shape_mask is None else shape_mask[idx]
+                image_name = names[idx] if names is not None else None
+                AUC_list.append(self.Cal_AUC(mask[idx], predict[idx], single_shape_mask, image_name))
         elif self.mode == "reverse":
             for idx in range(predict.shape[0]):
-                single_shape_mask = None if shape_mask == None else shape_mask[idx]
-                AUC_list.append(self.Cal_AUC(mask[idx], 1 - predict[idx], single_shape_mask))
+                single_shape_mask = None if shape_mask is None else shape_mask[idx]
+                image_name = names[idx] if names is not None else None
+                AUC_list.append(self.Cal_AUC(mask[idx], 1 - predict[idx], single_shape_mask, image_name))
         elif self.mode == "double":
             for idx in range(predict.shape[0]):
-                single_shape_mask = None if shape_mask == None else shape_mask[idx]
-                AUC_list.append(max(self.Cal_AUC(mask[idx], predict[idx], single_shape_mask), self.Cal_AUC(mask[idx], 1 - predict[idx], single_shape_mask)))
+                single_shape_mask = None if shape_mask is None else shape_mask[idx]
+                image_name = names[idx] if names is not None else None
+                AUC_list.append(max(self.Cal_AUC(mask[idx], predict[idx], single_shape_mask, image_name),
+                                   self.Cal_AUC(mask[idx], 1 - predict[idx], single_shape_mask, image_name)))
         else:
             raise RuntimeError(f"Cal_AUC no mode name {self.mode}")
 
@@ -214,6 +296,21 @@ class PixelAUC(AbstractEvaluator):
         # Only accumulate for tampered images (non-zero mask)
         is_tampered = (mask.sum(dim=(1, 2, 3)) > 0).cpu()  # [B]
         valid_AUC = AUC[is_tampered]
+
+        # Log any NaN values that slipped through
+        nan_mask = torch.isnan(valid_AUC)
+        if nan_mask.any():
+            nan_indices = nan_mask.nonzero(as_tuple=True)[0]
+            tampered_indices = is_tampered.nonzero(as_tuple=True)[0]
+            for ni in nan_indices:
+                orig_idx = tampered_indices[ni].item()
+                img_name = names[orig_idx] if names is not None else f"batch_idx={orig_idx}"
+                print(
+                    f"[PixelAUC WARNING] NaN AUC detected for tampered image '{img_name}' "
+                    f"(batch index {orig_idx}). This image will be excluded from the average."
+                )
+            valid_AUC = valid_AUC[~nan_mask]
+
         self._sum += valid_AUC.sum().item()
         self._count += valid_AUC.numel()
         return None
