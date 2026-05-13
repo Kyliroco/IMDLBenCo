@@ -2,6 +2,7 @@ from .temp import cal_confusion_matrix, generate_region_mask, cal_F1
 from .abstract_class import AbstractEvaluator
 from .F1 import ImageF1, PixelF1
 from .AUC import ImageAUC, PixelAUC
+from .AUPRC import PixelAUPRC
 from .IOU import PixelIOU
 from .Accuracy import ImageAccuracy, PixelAccuracy
 from .FPR import PixelFPR
@@ -18,6 +19,7 @@ __all__ = [
     'PixelF1',
     'ImageAUC',
     'PixelAUC',
+    'PixelAUPRC',
     'PixelIOU',
     'ImageAccuracy',
     'PixelAccuracy',
